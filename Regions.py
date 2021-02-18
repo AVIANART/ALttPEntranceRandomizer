@@ -881,6 +881,24 @@ def create_shops(world, player):
                     loc.forced_item = loc.item = ItemFactory(shop.inventory[index]['item'], player)
                     loc.item.location = loc
 
+def create_dynamic_shop_locations(world, player):
+    from Items import ItemFactory
+    for shop in world.shops:
+        if shop.region.player == player:
+            for i, item in enumerate(shop.inventory):
+                if item is None:
+                    continue
+                if item['create_location']:
+                    loc = Location(player, "{} Item {}".format(shop.region.name, i+1), parent=shop.region)
+                    shop.region.locations.append(loc)
+                    world.dynamic_locations.append(loc)
+
+                    world.clear_location_cache()
+
+                    world.push_item(loc, ItemFactory(item['item'], player), False)
+                    loc.event = True
+                    loc.locked = True
+
 
 def adjust_locations(world, player):
     if world.keydropshuffle[player]:

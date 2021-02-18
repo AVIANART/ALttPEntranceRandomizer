@@ -22,8 +22,8 @@ from RoomData import create_rooms
 from Rules import set_rules
 from Dungeons import create_dungeons, fill_dungeons, fill_dungeons_restrictive
 from Fill import distribute_items_cutoff, distribute_items_staleness, distribute_items_restrictive, flood_items
-from Fill import sell_potions, sell_keys, balance_multiworld_progression, balance_money_progression
-from ItemList import generate_itempool, difficulties, fill_prizes, customize_shops
+from Fill import sell_potions, sell_keys, balance_multiworld_progression, balance_money_progression, fill_prizes
+from ItemList import generate_itempool, difficulties, customize_shops, prepare_world_items
 from Utils import output_path, parse_player_names
 
 __version__ = '0.3.1.0-u'
@@ -32,100 +32,12 @@ __version__ = '0.3.1.0-u'
 class EnemizerError(RuntimeError):
     pass
 
-
-def main(args, seed=None, fish=None):
-    if args.outputpath:
-        os.makedirs(args.outputpath, exist_ok=True)
-        output_path.cached_path = args.outputpath
-
-    start = time.perf_counter()
-
-    # initialize the world
-    if args.code:
-        for player, code in args.code.items():
-            if code:
-                Settings.adjust_args_from_code(code, player, args)
-    world = World(args.multi, args.shuffle, args.door_shuffle, args.logic, args.mode, args.swords,
-                  args.difficulty, args.item_functionality, args.timer, args.progressive, args.goal, args.algorithm,
-                  args.accessibility, args.shuffleganon, args.retro, args.custom, args.customitemarray, args.hints)
+def main(world, gen_options):
+    if gen_options.outputpath:
+        os.makedirs(gen_options.outputpath, exist_ok=True)
+        output_path.cached_path = gen_options.outputpath
     logger = logging.getLogger('')
-    if seed is None:
-        random.seed(None)
-        world.seed = random.randint(0, 999999999)
-    else:
-        world.seed = int(seed)
-    random.seed(world.seed)
-
-    world.remote_items = args.remote_items.copy()
-    world.mapshuffle = args.mapshuffle.copy()
-    world.compassshuffle = args.compassshuffle.copy()
-    world.keyshuffle = args.keyshuffle.copy()
-    world.bigkeyshuffle = args.bigkeyshuffle.copy()
-    world.crystals_needed_for_ganon = {player: random.randint(0, 7) if args.crystals_ganon[player] == 'random' else int(args.crystals_ganon[player]) for player in range(1, world.players + 1)}
-    world.crystals_needed_for_gt = {player: random.randint(0, 7) if args.crystals_gt[player] == 'random' else int(args.crystals_gt[player]) for player in range(1, world.players + 1)}
-    world.crystals_ganon_orig = args.crystals_ganon.copy()
-    world.crystals_gt_orig = args.crystals_gt.copy()
-    world.open_pyramid = args.openpyramid.copy()
-    world.boss_shuffle = args.shufflebosses.copy()
-    world.enemy_shuffle = args.shuffleenemies.copy()
-    world.enemy_health = args.enemy_health.copy()
-    world.enemy_damage = args.enemy_damage.copy()
-    world.beemizer = args.beemizer.copy()
-    world.intensity = {player: random.randint(1, 3) if args.intensity[player] == 'random' else int(args.intensity[player]) for player in range(1, world.players + 1)}
-    world.experimental = args.experimental.copy()
-    world.dungeon_counters = args.dungeon_counters.copy()
-    world.potshuffle = args.shufflepots.copy()
-    world.fish = fish
-    world.shopsanity = args.shopsanity.copy()
-    world.keydropshuffle = args.keydropshuffle.copy()
-    world.mixed_travel = args.mixed_travel.copy()
-    world.standardize_palettes = args.standardize_palettes.copy()
-
-    world.rom_seeds = {player: random.randint(0, 999999999) for player in range(1, world.players + 1)}
-
-    logger.info(
-      world.fish.translate("cli","cli","app.title") + "\n",
-      __version__,
-      world.seed
-    )
-
-    parsed_names = parse_player_names(args.names, world.players, args.teams)
-    world.teams = len(parsed_names)
-    for i, team in enumerate(parsed_names, 1):
-        if world.players > 1:
-            logger.info('%s%s', 'Team%d: ' % i if world.teams > 1 else 'Players: ', ', '.join(team))
-        for player, name in enumerate(team, 1):
-            world.player_names[player].append(name)
-    logger.info('')
-
-    for player in range(1, world.players + 1):
-        world.difficulty_requirements[player] = difficulties[world.difficulty[player]]
-
-        if world.mode[player] == 'standard' and world.enemy_shuffle[player] != 'none':
-            if hasattr(world,"escape_assist") and player in world.escape_assist:
-                world.escape_assist[player].append('bombs') # enemized escape assumes infinite bombs available and will likely be unbeatable without it
-
-        for tok in filter(None, args.startinventory[player].split(',')):
-            item = ItemFactory(tok.strip(), player)
-            if item:
-                world.push_precollected(item)
-
-        if world.mode[player] != 'inverted':
-            create_regions(world, player)
-        else:
-            create_inverted_regions(world, player)
-        create_dungeon_regions(world, player)
-        create_shops(world, player)
-        create_doors(world, player)
-        create_rooms(world, player)
-        create_dungeons(world, player)
-        adjust_locations(world, player)
-
-    if any(world.potshuffle.values()):
-        logger.info(world.fish.translate("cli", "cli", "shuffling.pots"))
-        for player in range(1, world.players + 1):
-            if world.potshuffle[player]:
-                shuffle_pots(world, player)
+    start = time.perf_counter()
 
     logger.info(world.fish.translate("cli","cli","shuffling.world"))
 
@@ -143,11 +55,11 @@ def main(args, seed=None, fish=None):
             mark_light_world_regions(world, player)
         else:
             mark_dark_world_regions(world, player)
-    logger.info(world.fish.translate("cli","cli","generating.itempool"))
-    logger.info(world.fish.translate("cli","cli","generating.itempool"))
+
+    logger.info(world.fish.translate("cli","cli","calc.access.rules"))
 
     for player in range(1, world.players + 1):
-        generate_itempool(world, player)
+        prepare_world_items(world, player)
 
     logger.info(world.fish.translate("cli","cli","calc.access.rules"))
 
@@ -170,8 +82,8 @@ def main(args, seed=None, fish=None):
     logger.info(world.fish.translate("cli","cli","placing.dungeon.items"))
 
     shuffled_locations = None
-    if args.algorithm in ['balanced', 'vt26'] or any(list(args.mapshuffle.values()) + list(args.compassshuffle.values()) +
-                                                     list(args.keyshuffle.values()) + list(args.bigkeyshuffle.values())):
+    if world.algorithm in ['balanced', 'vt26'] or any(list(world.mapshuffle.values()) + list(world.compassshuffle.values()) +
+                                                      list(world.keyshuffle.values()) + list(world.bigkeyshuffle.values())):
         shuffled_locations = world.get_unfilled_locations()
         random.shuffle(shuffled_locations)
         fill_dungeons_restrictive(world, shuffled_locations)
@@ -194,20 +106,20 @@ def main(args, seed=None, fish=None):
 
     logger.info(world.fish.translate("cli","cli","fill.world"))
 
-    if args.algorithm == 'flood':
+    if world.algorithm == 'flood':
         flood_items(world)  # different algo, biased towards early game progress items
-    elif args.algorithm == 'vt21':
+    elif world.algorithm == 'vt21':
         distribute_items_cutoff(world, 1)
-    elif args.algorithm == 'vt22':
+    elif world.algorithm == 'vt22':
         distribute_items_cutoff(world, 0.66)
-    elif args.algorithm == 'freshness':
+    elif world.algorithm == 'freshness':
         distribute_items_staleness(world)
-    elif args.algorithm == 'vt25':
+    elif world.algorithm == 'vt25':
         distribute_items_restrictive(world, False)
-    elif args.algorithm == 'vt26':
+    elif world.algorithm == 'vt26':
 
         distribute_items_restrictive(world, True, shuffled_locations)
-    elif args.algorithm == 'balanced':
+    elif world.algorithm == 'balanced':
         distribute_items_restrictive(world, True)
 
     if world.players > 1:
@@ -223,50 +135,50 @@ def main(args, seed=None, fish=None):
             customize_shops(world, player)
     balance_money_progression(world)
 
-    outfilebase = f'DR_{args.outputname if args.outputname else world.seed}'
+    outfilebase = f'DR_{gen_options.outputname if gen_options.outputname else world.seed}'
 
     rom_names = []
     jsonout = {}
     enemized = False
-    if not args.suppress_rom:
+    if not gen_options.suppress_rom:
         logger.info(world.fish.translate("cli","cli","patching.rom"))
         for team in range(world.teams):
             for player in range(1, world.players + 1):
-                sprite_random_on_hit = type(args.sprite[player]) is str and args.sprite[player].lower() == 'randomonhit'
+                sprite_random_on_hit = type(gen_options.sprite[player]) is str and gen_options.sprite[player].lower() == 'randomonhit'
                 use_enemizer = (world.boss_shuffle[player] != 'none' or world.enemy_shuffle[player] != 'none'
                                 or world.enemy_health[player] != 'default' or world.enemy_damage[player] != 'default'
                                 or sprite_random_on_hit)
 
                 if use_enemizer:
-                    base_patch = LocalRom(args.rom)  # update base2current.json
+                    base_patch = LocalRom(gen_options.rom)  # update base2current.json
 
-                rom = JsonRom() if args.jsonout or use_enemizer else LocalRom(args.rom)
+                rom = JsonRom() if gen_options.jsonout or use_enemizer else LocalRom(gen_options.rom)
 
-                if use_enemizer and (args.enemizercli or not args.jsonout):
-                    if args.rom and not(os.path.isfile(args.rom)):
-                        raise RuntimeError("Could not find valid base rom for enemizing at expected path %s." % args.rom)
-                    if os.path.exists(args.enemizercli):
-                        patch_enemizer(world, player, rom, args.rom, args.enemizercli, sprite_random_on_hit)
+                if use_enemizer and (gen_options.enemizercli or not gen_options.jsonout):
+                    if gen_options.rom and not(os.path.isfile(gen_options.rom)):
+                        raise RuntimeError("Could not find valid base rom for enemizing at expected path %s." % gen_options.rom)
+                    if os.path.exists(gen_options.enemizercli):
+                        patch_enemizer(world, player, rom, gen_options.rom, gen_options.enemizercli, sprite_random_on_hit)
                         enemized = True
-                        if not args.jsonout:
-                            rom = LocalRom.fromJsonRom(rom, args.rom, 0x400000)
+                        if not gen_options.jsonout:
+                            rom = LocalRom.fromJsonRom(rom, gen_options.rom, 0x400000)
                     else:
-                        enemizerMsg  = world.fish.translate("cli","cli","enemizer.not.found") + ': ' + args.enemizercli + "\n"
+                        enemizerMsg  = world.fish.translate("cli","cli","enemizer.not.found") + ': ' + gen_options.enemizercli + "\n"
                         enemizerMsg += world.fish.translate("cli","cli","enemizer.nothing.applied")
                         logging.warning(enemizerMsg)
                         raise EnemizerError(enemizerMsg)
 
-                patch_rom(world, rom, player, team, enemized, bool(args.outputname))
+                patch_rom(world, rom, player, team, enemized, bool(gen_options.outputname))
 
-                if args.race:
+                if gen_options.race:
                     patch_race_rom(rom)
 
                 rom_names.append((player, team, list(rom.name)))
                 world.spoiler.hashes[(player, team)] = get_hash_string(rom.hash)
 
-                apply_rom_settings(rom, args.heartbeep[player], args.heartcolor[player], args.quickswap[player], args.fastmenu[player], args.disablemusic[player], args.sprite[player], args.ow_palettes[player], args.uw_palettes[player])
+                apply_rom_settings(rom, gen_options.heartbeep[player], gen_options.heartcolor[player], gen_options.quickswap[player], gen_options.fastmenu[player], gen_options.disablemusic[player], gen_options.sprite[player], gen_options.ow_palettes[player], gen_options.uw_palettes[player])
 
-                if args.jsonout:
+                if gen_options.jsonout:
                     jsonout[f'patch_t{team}_p{player}'] = rom.patches
                 else:
                     outfilepname = f'_T{team+1}' if world.teams > 1 else ''
@@ -274,34 +186,34 @@ def main(args, seed=None, fish=None):
                         outfilepname += f'_P{player}'
                     if world.players > 1 or world.teams > 1:
                         outfilepname += f"_{world.player_names[player][team].replace(' ', '_')}" if world.player_names[player][team] != 'Player %d' % player else ''
-                    outfilesuffix = f'_{Settings.make_code(world, player)}' if not args.outputname else ''
+                    outfilesuffix = f'_{Settings.make_code(world, player)}' if not gen_options.outputname else ''
                     rom.write_to_file(output_path(f'{outfilebase}{outfilepname}{outfilesuffix}.sfc'))
 
         if world.players > 1:
-            multidata = zlib.compress(json.dumps({"names": parsed_names,
+            multidata = zlib.compress(json.dumps({"names": world.parsed_names,
                                                   "roms": rom_names,
                                                   "remote_items": [player for player in range(1, world.players + 1) if world.remote_items[player]],
                                                   "locations": [((location.address, location.player), (location.item.code, location.item.player))
                                                                 for location in world.get_filled_locations() if type(location.address) is int],
-                                                  "tags" : ["DR"]
+                                                  "tags": ["DR"]
                                                   }).encode("utf-8"))
-            if args.jsonout:
+            if gen_options.jsonout:
                 jsonout["multidata"] = list(multidata)
             else:
                 with open(output_path('%s_multidata' % outfilebase), 'wb') as f:
                     f.write(multidata)
 
-    if not args.skip_playthrough:
+    if not gen_options.skip_playthrough:
         logger.info(world.fish.translate("cli","cli","calc.playthrough"))
         create_playthrough(world)
 
-    if args.jsonout:
+    if gen_options.jsonout:
         print(json.dumps({**jsonout, 'spoiler': world.spoiler.to_json()}))
-    elif args.create_spoiler:
+    elif gen_options.create_spoiler:
         logger.info(world.fish.translate("cli","cli","patching.spoiler"))
-        if args.jsonout:
+        if gen_options.jsonout:
             with open(output_path('%s_Spoiler.json' % outfilebase), 'w') as outfile:
-              outfile.write(world.spoiler.to_json())
+                outfile.write(world.spoiler.to_json())
         else:
             world.spoiler.to_file(output_path('%s_Spoiler.txt' % outfilebase))
 
@@ -310,9 +222,9 @@ def main(args, seed=None, fish=None):
     logger.info("")
     logger.info(world.fish.translate("cli","cli","done"))
     logger.info("")
-    logger.info(world.fish.translate("cli","cli","made.rom") % (YES if (args.create_rom) else NO))
-    logger.info(world.fish.translate("cli","cli","made.playthrough") % (YES if (args.calc_playthrough) else NO))
-    logger.info(world.fish.translate("cli","cli","made.spoiler") % (YES if (not args.jsonout and args.create_spoiler) else NO))
+    logger.info(world.fish.translate("cli","cli","made.rom") % (YES if (gen_options.create_rom) else NO))
+    logger.info(world.fish.translate("cli","cli","made.playthrough") % (YES if (gen_options.calc_playthrough) else NO))
+    logger.info(world.fish.translate("cli","cli","made.spoiler") % (YES if (not gen_options.jsonout and gen_options.create_spoiler) else NO))
     logger.info(world.fish.translate("cli","cli","used.enemizer") % (YES if enemized else NO))
     logger.info(world.fish.translate("cli","cli","seed") + ": %d", world.seed)
     logger.info(world.fish.translate("cli","cli","total.time"), time.perf_counter() - start)
@@ -325,9 +237,7 @@ def main(args, seed=None, fish=None):
 
 def copy_world(world):
     # ToDo: Not good yet
-    ret = World(world.players, world.shuffle, world.doorShuffle, world.logic, world.mode, world.swords,
-                world.difficulty, world.difficulty_adjustments, world.timer, world.progressive, world.goal, world.algorithm,
-                world.accessibility, world.shuffle_ganon, world.retro, world.custom, world.customitemarray, world.hints)
+    ret = World(world.to_attributes())
     ret.teams = world.teams
     ret.player_names = copy.deepcopy(world.player_names)
     ret.remote_items = world.remote_items.copy()
@@ -415,7 +325,7 @@ def copy_world(world):
     for location in world.get_locations():
         new_location = ret.get_location(location.name, location.player)
         if location.item is not None:
-            item = Item(location.item.name, location.item.advancement, location.item.priority, location.item.type, player = location.item.player)
+            item = Item(location.item.name, location.item.advancement, location.item.priority, location.item.type, player=location.item.player)
             new_location.item = item
             item.location = new_location
             item.world = ret
@@ -429,7 +339,7 @@ def copy_world(world):
 
     # copy remaining itempool. No item in itempool should have an assigned location
     for item in world.itempool:
-        ret.itempool.append(Item(item.name, item.advancement, item.priority, item.type, player = item.player))
+        ret.itempool.append(Item(item.name, item.advancement, item.priority, item.type, player=item.player))
 
     for item in world.precollected_items:
         ret.push_precollected(ItemFactory(item.name, item.player))

@@ -11,6 +11,7 @@ import sys
 from source.classes.BabelFish import BabelFish
 import source.classes.diags as diagnostics
 
+from BaseClasses import WorldBuilder, GenOptions
 from CLI import parse_cli, get_args_priority
 from Main import main, EnemizerError, __version__
 from Rom import get_sprite_from_name
@@ -62,28 +63,30 @@ def start():
         from Gui import guiMain
         guiMain(args)
     elif args.count is not None and args.count > 1:
-        random.seed(None)
-        seed = args.seed or random.randint(0, 999999999)
+        world = WorldBuilder().from_args(args).set_fish(fish).build()
+        gen_options = GenOptions().from_args(args)
         failures = []
         logger = logging.getLogger('')
         for _ in range(args.count):
             try:
-                main(seed=seed, args=args, fish=fish)
+                main(world=world, gen_options=gen_options)
                 logger.info('%s %s', fish.translate("cli","cli","finished.run"), _+1)
             except (FillError, EnemizerError, Exception, RuntimeError) as err:
-                failures.append((err, seed))
+                failures.append((err, world.seed))
                 logger.warning('%s: %s', fish.translate("cli","cli","generation.failed"), err)
-            seed = random.randint(0, 999999999)
+            world.seed = random.randint(0, 999999999)
         for fail in failures:
             logger.info('%s\tseed failed with: %s', fail[1], fail[0])
         fail_rate = 100 * len(failures) / args.count
         success_rate = 100 * (args.count - len(failures)) / args.count
         fail_rate = str(fail_rate).split('.')
         success_rate = str(success_rate).split('.')
-        logger.info('Generation fail    rate: ' + str(fail_rate[0]   ).rjust(3, " ") + '.' + str(fail_rate[1]   ).ljust(6, '0') + '%')
+        logger.info('Generation fail    rate: ' + str(fail_rate[0]).rjust(3, " ") + '.' + str(fail_rate[1]).ljust(6, '0') + '%')
         logger.info('Generation success rate: ' + str(success_rate[0]).rjust(3, " ") + '.' + str(success_rate[1]).ljust(6, '0') + '%')
     else:
-        main(seed=args.seed, args=args, fish=fish)
+        world = WorldBuilder().from_args(args).set_fish(fish).build()
+        gen_options = GenOptions().from_args(args)
+        main(world=world, gen_options=gen_options)
 
 
 if __name__ == '__main__':

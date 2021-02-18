@@ -1,9 +1,12 @@
 import random
 
+
 # ToDo: With shuffle_ganon option, prevent gtower from linking to an exit only location through a 2 entrance cave.
 
 
 def link_entrances(world, player):
+    from Regions import create_dynamic_shop_locations
+    
     connect_two_way(world, 'Links House', 'Links House Exit', player) # unshuffled. For now
     connect_exit(world, 'Chris Houlihan Room Exit', 'Links House', player) # should always match link's house, except for plandos
 
@@ -1062,6 +1065,10 @@ def link_entrances(world, player):
     else:
         raise NotImplementedError('Shuffling not supported yet')
 
+    if world.retro[player]:
+        set_up_take_anys(world, player)
+    create_dynamic_shop_locations(world, player)
+
     # check for swamp palace fix
     if world.get_entrance('Dam', player).connected_region.name != 'Dam' or world.get_entrance('Swamp Palace', player).connected_region.name != 'Swamp Portal':
         world.swamp_patch_required[player] = True
@@ -1079,6 +1086,7 @@ def link_entrances(world, player):
         world.ganonstower_vanilla[player] = False
 
 def link_inverted_entrances(world, player):
+    from Regions import create_dynamic_shop_locations
     # Link's house shuffled freely, Houlihan set in mandatory_connections 
 
     Dungeon_Exits = Inverted_Dungeon_Exits_Base.copy()
@@ -1766,6 +1774,10 @@ def link_inverted_entrances(world, player):
     else:
         raise NotImplementedError('Shuffling not supported yet')
 
+    if world.retro[player]:
+        set_up_take_anys(world, player)
+    create_dynamic_shop_locations(world, player)
+
     # check for swamp palace fix
     if world.get_entrance('Dam', player).connected_region.name != 'Dam' or world.get_entrance('Swamp Palace', player).connected_region.name != 'Swamp Lobby':
         world.swamp_patch_required[player] = True
@@ -2209,6 +2221,63 @@ def unbias_some_entrances(Dungeon_Exits, Cave_Exits, Old_Man_House, Cave_Three_E
     tuplize_lists_in_list(Cave_Exits)
     tuplize_lists_in_list(Old_Man_House)
     tuplize_lists_in_list(Cave_Three_Exits)
+
+take_any_locations = [
+    'Snitch Lady (East)', 'Snitch Lady (West)', 'Bush Covered House', 'Light World Bomb Hut',
+    'Fortune Teller (Light)', 'Lake Hylia Fortune Teller', 'Lumberjack House', 'Bonk Fairy (Light)',
+    'Bonk Fairy (Dark)', 'Lake Hylia Healer Fairy', 'Swamp Healer Fairy', 'Desert Healer Fairy',
+    'Dark Lake Hylia Healer Fairy', 'Dark Lake Hylia Ledge Healer Fairy', 'Dark Desert Healer Fairy',
+    'Dark Death Mountain Healer Fairy', 'Long Fairy Cave', 'Good Bee Cave', '20 Rupee Cave',
+    'Kakariko Gamble Game', '50 Rupee Cave', 'Lost Woods Gamble', 'Hookshot Fairy',
+    'Palace of Darkness Hint', 'East Dark World Hint', 'Archery Game', 'Dark Lake Hylia Ledge Hint',
+    'Dark Lake Hylia Ledge Spike Cave', 'Fortune Teller (Dark)', 'Dark Sanctuary Hint', 'Dark Desert Hint']
+
+def set_up_take_anys(world, player):
+    from Regions import Region, RegionType, Shop, ShopType
+    from Items import ItemFactory
+
+    if world.mode[player] == 'inverted' and 'Dark Sanctuary Hint' in take_any_locations:
+        take_any_locations.remove('Dark Sanctuary Hint')
+
+    regions = random.sample(take_any_locations, 5)
+
+    old_man_take_any = Region("Old Man Sword Cave", RegionType.Cave, 'the sword cave', player)
+    world.regions.append(old_man_take_any)
+    world.dynamic_regions.append(old_man_take_any)
+
+    reg = regions.pop()
+    entrance = world.get_region(reg, player).entrances[0]
+    connect_entrance(world, entrance, old_man_take_any, player)
+    entrance.target = 0x58
+    old_man_take_any.shop = Shop(old_man_take_any, 0x0112, ShopType.TakeAny, 0xE2, True, True)
+    world.shops.append(old_man_take_any.shop)
+
+    swords = [item for item in world.itempool if item.type == 'Sword' and item.player == player]
+    if swords:
+        sword = random.choice(swords)
+        world.itempool.remove(sword)
+        world.itempool.append(ItemFactory('Rupees (20)', player))
+        old_man_take_any.shop.add_inventory(0, sword.name, 0, 0, create_location=True)
+    else:
+        old_man_take_any.shop.add_inventory(0, 'Rupees (300)', 0, 0)
+
+    for num in range(4):
+        take_any = Region("Take-Any #{}".format(num+1), RegionType.Cave, 'a cave of choice', player)
+        world.regions.append(take_any)
+        world.dynamic_regions.append(take_any)
+
+        target, room_id = random.choice([(0x58, 0x0112), (0x60, 0x010F), (0x46, 0x011F)])
+        reg = regions.pop()
+        entrance = world.get_region(reg, player).entrances[0]
+        connect_entrance(world, entrance, take_any, player)
+        entrance.target = target
+        take_any.shop = Shop(take_any, room_id, ShopType.TakeAny, 0xE3, True, True)
+        world.shops.append(take_any.shop)
+        take_any.shop.add_inventory(0, 'Blue Potion', 0, 0)
+        take_any.shop.add_inventory(1, 'Boss Heart Container', 0, 0)
+    
+    # remove this maybe
+    world.initialize_regions()
 
 
 LW_Dungeon_Entrances = ['Desert Palace Entrance (South)',
