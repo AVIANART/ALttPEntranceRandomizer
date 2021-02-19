@@ -1,6 +1,8 @@
 import base64
+from dataclasses import dataclass, field
 import copy
 import json
+import math
 import logging
 from collections import OrderedDict, Counter, deque, defaultdict
 from enum import Enum, unique
@@ -22,7 +24,7 @@ class World(object):
 
     def __init__(self, attrs):
         self.players = attrs.players
-        self.parsed_names = None
+        self.parsed_names = []
         self.teams = 1
         self.shuffle = attrs.shuffle.copy()
         self.doorShuffle = attrs.doorShuffle.copy()
@@ -374,18 +376,16 @@ class World(object):
         else:
             raise RuntimeError('Cannot assign item %s to location %s.' % (item, location))
 
-    def pre_place(self, location, item, collect=True):
+    def pre_place(self, location, item):
         if not isinstance(location, Location):
             raise RuntimeError('Cannot assign item %s to location %s (player %d).' % (item, location, item.player))
 
         location.item = item
         item.location = location
         item.world = self
-        if collect:
-            self.state.collect(item, location.event, location)
 
         logging.getLogger('').debug('Placed %s at %s', item, location)
-    
+
     def get_entrances(self):
         if self._cached_entrances is None:
             self._cached_entrances = []
@@ -469,6 +469,115 @@ class World(object):
 
         return False
 
+    def customize_shops(self, player):
+        from Items import ItemFactory
+        from Regions import shop_to_location_table
+
+        found_bomb_upgrade, found_arrow_upgrade = False, self.retro[player]
+        possible_replacements = []
+        shops_to_customize = shop_to_location_table.copy()
+        if self.retro[player]:
+            shops_to_customize.update(self.retro_shops)
+        for shop_name, loc_list in shops_to_customize.items():
+            shop = self.get_region(shop_name, player).shop
+            shop.custom = True
+            shop.clear_inventory()
+            for idx, loc in enumerate(loc_list):
+                location = self.get_location(loc, player)
+                item = location.item
+                max_repeat = 1
+                if shop_name not in self.retro_shops:
+                    if item.name in self.repeatable_shop_items and item.player == player:
+                        max_repeat = 0
+                    if item.name in ['Bomb Upgrade (+5)', 'Arrow Upgrade (+5)'] and item.player == player:
+                        if item.name == 'Bomb Upgrade (+5)':
+                            found_bomb_upgrade = True
+                        if item.name == 'Arrow Upgrade (+5)':
+                            found_arrow_upgrade = True
+                        max_repeat = 7
+                if shop_name in self.retro_shops:
+                    price = 0
+                else:
+                    price = 120 if shop_name == 'Potion Shop' and item.name == 'Red Potion' else item.price
+                    if self.retro[player] and item.name == 'Single Arrow':
+                        price = 80
+                # randomize price
+                shop.add_inventory(idx, item.name, self.randomize_price(price), max_repeat, player=item.player)
+                if item.name in self.cap_replacements and shop_name not in self.retro_shops and item.player == player:
+                    possible_replacements.append((shop, idx, location, item))
+            # randomize shopkeeper
+            if shop_name != 'Capacity Upgrade':
+                shopkeeper = random.choice([0xC1, 0xA0, 0xE2, 0xE3])
+                shop.shopkeeper_config = shopkeeper
+        # handle capacity upgrades - randomly choose a bomb bunch or arrow bunch to become capacity upgrades
+        if not found_bomb_upgrade and len(possible_replacements) > 0:
+            choices = []
+            for shop, idx, loc, item in possible_replacements:
+                if item.name in ['Bombs (3)', 'Bombs (10)']:
+                    choices.append((shop, idx, loc, item))
+            if len(choices) > 0:
+                shop, idx, loc, item = random.choice(choices)
+                upgrade = ItemFactory('Bomb Upgrade (+5)', player)
+                shop.add_inventory(idx, upgrade.name, self.randomize_price(upgrade.price), 6,
+                                   item.name, self.randomize_price(item.price), player=item.player)
+                loc.item = upgrade
+                upgrade.location = loc
+        if not found_arrow_upgrade and len(possible_replacements) > 0:
+            choices = []
+            for shop, idx, loc, item in possible_replacements:
+                if item.name == 'Arrows (10)' or (item.name == 'Single Arrow' and not self.retro[player]):
+                    choices.append((shop, idx, loc, item))
+            if len(choices) > 0:
+                shop, idx, loc, item = random.choice(choices)
+                upgrade = ItemFactory('Arrow Upgrade (+5)', player)
+                shop.add_inventory(idx, upgrade.name, self.randomize_price(upgrade.price), 6,
+                                   item.name, self.randomize_price(item.price), player=item.player)
+                loc.item = upgrade
+                upgrade.location = loc
+        self.change_shop_items_to_rupees(player, shops_to_customize)
+        self.todays_discounts(player)
+
+    def randomize_price(price):
+        half_price = price // 2
+        max_price = price - half_price
+        if max_price % 5 == 0:
+            max_price //= 5
+            return random.randint(0, max_price) * 5 + half_price
+        else:
+            if price <= 10:
+                return price
+            else:
+                half_price = int(math.ceil(half_price / 5.0)) * 5
+                max_price = price - half_price
+                max_price //= 5
+                return random.randint(0, max_price) * 5 + half_price
+
+    def change_shop_items_to_rupees(self, player, shops):
+        from Items import ItemFactory
+        locations = self.get_filled_locations(player)
+        for location in locations:
+            if location.item.name in self.shop_transfer.keys() and location.parent_region.name not in shops:
+                new_item = ItemFactory(self.shop_transfer[location.item.name], location.item.player)
+                location.item = new_item
+            if location.parent_region.name == 'Capacity Upgrade' and location.item.name in self.cap_blacklist:
+                new_item = ItemFactory('Rupees (300)', location.item.player)
+                location.item = new_item
+                shop = self.get_region('Capacity Upgrade', player).shop
+                slot = self.shop_to_location_table['Capacity Upgrade'].index(location.name)
+                shop.add_inventory(slot, new_item.name, self.randomize_price(new_item.price), 1, player=new_item.player)
+
+    def todays_discounts(self, player):
+        locs = []
+        for shop, locations in self.shop_to_location_table.items():
+            for slot, loc in enumerate(locations):
+                locs.append((self.get_location(loc, player), shop, slot))
+        discount_number = random.randint(4, 7)
+        chosen_locations = random.choices(locs, k=discount_number)
+        for location, shop_name, slot in chosen_locations:
+            shop = self.get_region(shop_name, player).shop
+            orig = location.item.price
+            shop.inventory[slot]['price'] = self.randomize_price(orig // 5)
+
     def to_attributes(self):
 
         players = self.players
@@ -494,35 +603,30 @@ class World(object):
                                difficulty_adjustments, timer, progressive, goal, algorithm, accessibility,
                                shuffle_ganon, retro, custom, customitemarray, hints)
 
-
+@dataclass
 class WorldAttributes(object):
     """
     A container class that holds information about the world we're building which
     is supplied by the user interface
     """
-
-    def __init__(self, players, shuffle, doorShuffle, logic, mode, swords, difficulty,
-                 difficulty_adjustments, timer, progressive, goal, algorithm, accessibility,
-                 shuffle_ganon, retro, custom, customitemarray, hints):
-
-        self.players = players
-        self.shuffle = shuffle
-        self.doorShuffle = doorShuffle
-        self.logic = logic
-        self.mode = mode
-        self.swords = swords
-        self.difficulty = difficulty
-        self.difficulty_adjustments = difficulty_adjustments
-        self.timer = timer
-        self.progressive = progressive
-        self.goal = goal
-        self.algorithm = algorithm
-        self.accessibility = accessibility
-        self.shuffle_ganon = shuffle_ganon
-        self.retro = retro
-        self.custom = custom
-        self.customitemarray = customitemarray
-        self.hints = hints
+    players: int = 1
+    shuffle: dict = field(default_factory=dict)
+    doorShuffle: dict = field(default_factory=dict)
+    logic: dict = field(default_factory=dict)
+    mode: dict = field(default_factory=dict)
+    swords: dict = field(default_factory=dict)
+    difficulty: dict = field(default_factory=dict)
+    difficulty_adjustments: dict = field(default_factory=dict)
+    timer: dict = field(default_factory=dict)
+    progressive: str = "on"
+    goal: dict = field(default_factory=dict)
+    algorithm: str = "balanced"
+    accessibility: dict = field(default_factory=dict)
+    shuffle_ganon: bool = True
+    retro: dict = field(default_factory=dict)
+    custom: bool = False
+    customitemarray: dict = field(default_factory=dict)
+    hints: dict = field(default_factory=dict)
 
 
 class WorldBuilder(object):
@@ -544,6 +648,7 @@ class WorldBuilder(object):
         from Bosses import place_bosses
         from Dungeons import create_dungeons
         from ItemList import difficulties, generate_itempool
+        from Fill import place_world_items
         from Main import __version__
         from PotShuffle import shuffle_pots
         from Regions import create_regions, create_shops, create_dungeon_regions, adjust_locations
@@ -558,12 +663,12 @@ class WorldBuilder(object):
           self.world.seed
         )
 
-        # for i, team in enumerate(self.world.parsed_names, 1):
-        #     if self.world.players > 1:
-        #         logger.info('%s%s', 'Team%d: ' % i if self.world.teams > 1 else 'Players: ', ', '.join(team))
-        #     for player, name in enumerate(team, 1):
-        #         self.world.player_names[player].append(name)
-        # logger.info('')
+        for i, team in enumerate(self.world.parsed_names, 1):
+            if self.world.players > 1:
+                logger.info('%s%s', 'Team%d: ' % i if self.world.teams > 1 else 'Players: ', ', '.join(team))
+            for player, name in enumerate(team, 1):
+                self.world.player_names[player].append(name)
+        logger.info('')
 
         logger.info(self.world.fish.translate("cli","cli","generating.itempool"))
         for player in range(1, self.world.players + 1):
@@ -589,10 +694,11 @@ class WorldBuilder(object):
                     if self.world.potshuffle[player]:
                         shuffle_pots(self.world, player)
 
+            place_world_items(self.world, player)
             generate_itempool(self.world, player)
-            place_bosses(world, player)
-            set_up_shops(world, player)
-            create_dynamic_shop_locations(world, player)
+            place_bosses(self.world, player)
+            self.set_up_shops(self.world, player)
+            self.create_dynamic_shop_locations(self.world, player)
 
         return self.world
 
@@ -654,7 +760,7 @@ class WorldBuilder(object):
     def set_fish(self, fish):
         self.fish = fish
 
-    def set_up_shops(world, player):
+    def set_up_shops(self, player):
         from Items import ItemFactory
 
         if self.world.retro[player]:
@@ -662,7 +768,7 @@ class WorldBuilder(object):
                 removals = [next(item for item in self.world.itempool if item.name == 'Arrows (10)' and item.player == player)]
                 red_pots = [item for item in self.world.itempool if item.name == 'Red Potion' and item.player == player][:5]
                 shields_n_hearts = [item for item in self.world.itempool if item.name in ['Blue Shield', 'Small Heart'] and item.player == player]
-                removals.extend([item for item in world.itempool if item.name == 'Arrow Upgrade (+5)' and item.player == player])
+                removals.extend([item for item in self.world.itempool if item.name == 'Arrow Upgrade (+5)' and item.player == player])
                 removals.extend(red_pots)
                 removals.extend(random.sample(shields_n_hearts, 5))
                 for remove in removals:
@@ -689,155 +795,53 @@ class WorldBuilder(object):
                 rss.locked = True
             return self
 
-    def customize_shops(world, player):
-        found_bomb_upgrade, found_arrow_upgrade = False, world.retro[player]
-        possible_replacements = []
-        shops_to_customize = shop_to_location_table.copy()
-        if world.retro[player]:
-            shops_to_customize.update(retro_shops)
-        for shop_name, loc_list in shops_to_customize.items():
-            shop = world.get_region(shop_name, player).shop
-            shop.custom = True
-            shop.clear_inventory()
-            for idx, loc in enumerate(loc_list):
-                location = world.get_location(loc, player)
-                item = location.item
-                max_repeat = 1
-                if shop_name not in retro_shops:
-                    if item.name in self.repeatable_shop_items and item.player == player:
-                        max_repeat = 0
-                    if item.name in ['Bomb Upgrade (+5)', 'Arrow Upgrade (+5)'] and item.player == player:
-                        if item.name == 'Bomb Upgrade (+5)':
-                            found_bomb_upgrade = True
-                        if item.name == 'Arrow Upgrade (+5)':
-                            found_arrow_upgrade = True
-                        max_repeat = 7
-                if shop_name in retro_shops:
-                    price = 0
-                else:
-                    price = 120 if shop_name == 'Potion Shop' and item.name == 'Red Potion' else item.price
-                    if world.retro[player] and item.name == 'Single Arrow':
-                        price = 80
-                # randomize price
-                shop.add_inventory(idx, item.name, randomize_price(price), max_repeat, player=item.player)
-                if item.name in self.cap_replacements and shop_name not in retro_shops and item.player == player:
-                    possible_replacements.append((shop, idx, location, item))
-            # randomize shopkeeper
-            if shop_name != 'Capacity Upgrade':
-                shopkeeper = random.choice([0xC1, 0xA0, 0xE2, 0xE3])
-                shop.shopkeeper_config = shopkeeper
-        # handle capacity upgrades - randomly choose a bomb bunch or arrow bunch to become capacity upgrades
-        if not found_bomb_upgrade and len(possible_replacements) > 0:
-            choices = []
-            for shop, idx, loc, item in possible_replacements:
-                if item.name in ['Bombs (3)', 'Bombs (10)']:
-                    choices.append((shop, idx, loc, item))
-            if len(choices) > 0:
-                shop, idx, loc, item = random.choice(choices)
-                upgrade = ItemFactory('Bomb Upgrade (+5)', player)
-                shop.add_inventory(idx, upgrade.name, randomize_price(upgrade.price), 6,
-                                   item.name, randomize_price(item.price), player=item.player)
-                loc.item = upgrade
-                upgrade.location = loc
-        if not found_arrow_upgrade and len(possible_replacements) > 0:
-            choices = []
-            for shop, idx, loc, item in possible_replacements:
-                if item.name == 'Arrows (10)' or (item.name == 'Single Arrow' and not world.retro[player]):
-                    choices.append((shop, idx, loc, item))
-            if len(choices) > 0:
-                shop, idx, loc, item = random.choice(choices)
-                upgrade = ItemFactory('Arrow Upgrade (+5)', player)
-                shop.add_inventory(idx, upgrade.name, randomize_price(upgrade.price), 6,
-                                   item.name, randomize_price(item.price), player=item.player)
-                loc.item = upgrade
-                upgrade.location = loc
-        change_shop_items_to_rupees(world, player, shops_to_customize)
-        todays_discounts(world, player)
 
-    def randomize_price(price):
-        half_price = price // 2
-        max_price = price - half_price
-        if max_price % 5 == 0:
-            max_price //= 5
-            return random.randint(0, max_price) * 5 + half_price
-        else:
-            if price <= 10:
-                return price
-            else:
-                half_price = int(math.ceil(half_price / 5.0)) * 5
-                max_price = price - half_price
-                max_price //= 5
-                return random.randint(0, max_price) * 5 + half_price
 
-    def change_shop_items_to_rupees(world, player, shops):
-        locations = world.get_filled_locations(player)
-        for location in locations:
-            if location.item.name in self.shop_transfer.keys() and location.parent_region.name not in shops:
-                new_item = ItemFactory(self.shop_transfer[location.item.name], location.item.player)
-                location.item = new_item
-            if location.parent_region.name == 'Capacity Upgrade' and location.item.name in self.cap_blacklist:
-                new_item = ItemFactory('Rupees (300)', location.item.player)
-                location.item = new_item
-                shop = world.get_region('Capacity Upgrade', player).shop
-                slot = shop_to_location_table['Capacity Upgrade'].index(location.name)
-                shop.add_inventory(slot, new_item.name, randomize_price(new_item.price), 1, player=new_item.player)
-
-    def todays_discounts(world, player):
-        locs = []
-        for shop, locations in shop_to_location_table.items():
-            for slot, loc in enumerate(locations):
-                locs.append((world.get_location(loc, player), shop, slot))
-        discount_number = random.randint(4, 7)
-        chosen_locations = random.choices(locs, k=discount_number)
-        for location, shop_name, slot in chosen_locations:
-            shop = world.get_region(shop_name, player).shop
-            orig = location.item.price
-            shop.inventory[slot]['price'] = randomize_price(orig // 5)
-
-    def create_dynamic_shop_locations(world, player):
+    def create_dynamic_shop_locations(self, player):
+        from Items import ItemFactory
         from Regions import shop_table_by_location
-        for shop in world.shops[player]:
+        for shop in self.world.shops[player]:
             if shop.region.player == player:
                 for i, item in enumerate(shop.inventory):
                     if item is None:
                         continue
                     if item['create_location']:
                         slot_name = "{} Item {}".format(shop.region.name, i+1)
-                        address = shop_table_by_location[slot_name] if world.shopsanity[player] else None
+                        address = shop_table_by_location[slot_name] if self.world.shopsanity[player] else None
                         loc = Location(player, slot_name, address=address,
                                        parent=shop.region, hint_text='in an old-fashioned cave')
                         shop.region.locations.append(loc)
-                        world.dynamic_locations.append(loc)
+                        self.world.dynamic_locations.append(loc)
 
-                        world.clear_location_cache()
+                        self.world.clear_location_cache()
 
-                        if not world.shopsanity[player]:
-                            world.push_item(loc, ItemFactory(item['item'], player), False)
+                        if not self.world.shopsanity[player]:
+                            self.world.push_item(loc, ItemFactory(item['item'], player), False)
                             loc.event = True
                             loc.locked = True
 
+@dataclass
 class GenOptions(object):
 
-    def __init__(self):
-        self.rom = None
-        self.enemizercli = None
-        self.outputname = None
-        self.outputpath = None
-        self.jsonout = None
-        self.create_rom = None
-        self.suppress_rom = None
-        self.race = None
-        self.sprite = None
-        self.heartbeep = None
-        self.heartcolor = None
-        self.quickswap = None
-        self.fastmenu = None
-        self.disablemusic = None
-        self.ow_palettes = None
-        self.uw_palettes = None
-        self.skip_playthrough = None
-        self.calc_playthrough = None
-        self.create_spoiler = None
+    rom: str = ""
+    enemizercli: str = ""
+    outputname: str = ""
+    outputpath: str = ""
+    jsonout: bool = False
+    create_rom: bool = True
+    suppress_rom: bool = False
+    race: bool = False
+    sprite: dict = field(default_factory=dict)
+    heartbeep: dict = field(default_factory=dict)
+    heartcolor: dict = field(default_factory=dict)
+    quickswap: dict = field(default_factory=dict)
+    fastmenu: dict = field(default_factory=dict)
+    disablemusic: dict = field(default_factory=dict)
+    ow_palettes: dict = field(default_factory=dict)
+    uw_palettes: dict = field(default_factory=dict)
+    skip_playthrough: dict = False
+    calc_playthrough: dict = True
+    create_spoiler: dict = False
 
     def from_args(self, args):
         self.rom = args.rom

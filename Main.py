@@ -23,7 +23,7 @@ from Rules import set_rules
 from Dungeons import create_dungeons, fill_dungeons, fill_dungeons_restrictive
 from Fill import distribute_items_cutoff, distribute_items_staleness, distribute_items_restrictive, flood_items
 from Fill import sell_potions, sell_keys, balance_multiworld_progression, balance_money_progression, fill_prizes
-from ItemList import generate_itempool, difficulties, customize_shops, prepare_world_items
+from ItemList import generate_itempool, difficulties
 from Utils import output_path, parse_player_names
 
 __version__ = '0.3.1.0-u'
@@ -55,11 +55,6 @@ def main(world, gen_options):
             mark_light_world_regions(world, player)
         else:
             mark_dark_world_regions(world, player)
-
-    logger.info(world.fish.translate("cli","cli","calc.access.rules"))
-
-    for player in range(1, world.players + 1):
-        prepare_world_items(world, player)
 
     logger.info(world.fish.translate("cli","cli","calc.access.rules"))
 
@@ -132,7 +127,7 @@ def main(world, gen_options):
 
     for player in range(1, world.players+1):
         if world.shopsanity[player]:
-            customize_shops(world, player)
+            world.customize_shops(player)
     balance_money_progression(world)
 
     outfilebase = f'DR_{gen_options.outputname if gen_options.outputname else world.seed}'

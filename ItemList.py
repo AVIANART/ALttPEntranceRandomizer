@@ -234,7 +234,7 @@ def generate_itempool(world, player):
             world.escape_assist[player].append('bombs')
 
     for (location, item) in placed_items.items():
-        world.pre_place(world.get_location(location, player), ItemFactory(item, player), False)
+        world.pre_place(world.get_location(location, player), ItemFactory(item, player))
         world.get_location(location, player).event = True
         world.get_location(location, player).locked = True
 
@@ -581,72 +581,3 @@ def fill_specific_items(world):
     # world.itempool.remove(somaria)
     # all_state = world.get_all_state(True)
     # fill_restrictive(world, all_state, [shooter], [somaria])
-
-def prepare_world_items(world, player):
-    if world.goal[player] in ['pedestal', 'triforcehunt']:
-        world.pre_place(world.get_location('Ganon', player), ItemFactory('Nothing', player), False)
-    else:
-        world.pre_place(world.get_location('Ganon', player), ItemFactory('Triforce', player), False)
-
-    if world.goal[player] in ['triforcehunt']:
-        region = world.get_region('Light World',player)
-
-        loc = Location(player, "Murahdahla", parent=region)
-        loc.access_rule = lambda state: state.item_count('Triforce Piece', player) + state.item_count('Power Star', player) >= state.world.treasure_hunt_count[player]
-        region.locations.append(loc)
-        world.dynamic_locations.append(loc)
-
-        world.clear_location_cache()
-
-        world.pre_place(loc, ItemFactory('Triforce', player), False)
-        loc.event = True
-        loc.locked = True
-
-    world.get_location('Ganon', player).event = True
-    world.get_location('Ganon', player).locked = True
-    world.pre_place(world.get_location('Agahnim 1', player), ItemFactory('Beat Agahnim 1', player), False)
-    world.get_location('Agahnim 1', player).event = True
-    world.get_location('Agahnim 1', player).locked = True
-    world.pre_place(world.get_location('Agahnim 2', player), ItemFactory('Beat Agahnim 2', player), False)
-    world.get_location('Agahnim 2', player).event = True
-    world.get_location('Agahnim 2', player).locked = True
-    world.pre_place(world.get_location('Dark Blacksmith Ruins', player), ItemFactory('Pick Up Purple Chest', player), False)
-    world.get_location('Dark Blacksmith Ruins', player).event = True
-    world.get_location('Dark Blacksmith Ruins', player).locked = True
-    world.pre_place(world.get_location('Frog', player), ItemFactory('Get Frog', player), False)
-    world.get_location('Frog', player).event = True
-    world.get_location('Frog', player).locked = True
-    world.pre_place(world.get_location('Missing Smith', player), ItemFactory('Return Smith', player), False)
-    world.get_location('Missing Smith', player).event = True
-    world.get_location('Missing Smith', player).locked = True
-    world.pre_place(world.get_location('Floodgate', player), ItemFactory('Open Floodgate', player), False)
-    world.get_location('Floodgate', player).event = True
-    world.get_location('Floodgate', player).locked = True
-    world.pre_place(world.get_location('Trench 1 Switch', player), ItemFactory('Trench 1 Filled', player), False)
-    world.get_location('Trench 1 Switch', player).event = True
-    world.get_location('Trench 1 Switch', player).locked = True
-    world.pre_place(world.get_location('Trench 2 Switch', player), ItemFactory('Trench 2 Filled', player), False)
-    world.get_location('Trench 2 Switch', player).event = True
-    world.get_location('Trench 2 Switch', player).locked = True
-    world.pre_place(world.get_location('Swamp Drain', player), ItemFactory('Drained Swamp', player), False)
-    world.get_location('Swamp Drain', player).event = True
-    world.get_location('Swamp Drain', player).locked = True
-    world.pre_place(world.get_location('Attic Cracked Floor', player), ItemFactory('Shining Light', player), False)
-    world.get_location('Attic Cracked Floor', player).event = True
-    world.get_location('Attic Cracked Floor', player).locked = True
-    world.pre_place(world.get_location('Suspicious Maiden', player), ItemFactory('Maiden Rescued', player), False)
-    world.get_location('Suspicious Maiden', player).event = True
-    world.get_location('Suspicious Maiden', player).locked = True
-    world.pre_place(world.get_location('Revealing Light', player), ItemFactory('Maiden Unmasked', player), False)
-    world.get_location('Revealing Light', player).event = True
-    world.get_location('Revealing Light', player).locked = True
-    world.pre_place(world.get_location('Ice Block Drop', player), ItemFactory('Convenient Block', player), False)
-    world.get_location('Ice Block Drop', player).event = True
-    world.get_location('Ice Block Drop', player).locked = True
-    if world.mode[player] == 'standard':
-        world.pre_place(world.get_location('Zelda Pickup', player), ItemFactory('Zelda Herself', player), False)
-        world.get_location('Zelda Pickup', player).event = True
-        world.get_location('Zelda Pickup', player).locked = True
-        world.pre_place(world.get_location('Zelda Drop Off', player), ItemFactory('Zelda Delivered', player), False)
-        world.get_location('Zelda Drop Off', player).event = True
-        world.get_location('Zelda Drop Off', player).locked = True
