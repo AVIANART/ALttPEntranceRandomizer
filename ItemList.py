@@ -278,6 +278,7 @@ def generate_itempool(world, player):
                   2: {None: 40, 'trap': 40, 'bee': 20},
                   3: {'trap': 50, 'bee': 50},
                   4: {'trap': 100}}
+
     def beemizer(item):
         if world.beemizer[item.player] and not item.advancement and not item.priority and not item.type:
             choice = random.choices(list(beeweights[world.beemizer[item.player]].keys()), weights=list(beeweights[world.beemizer[item.player]].values()))[0]
@@ -293,6 +294,20 @@ def generate_itempool(world, player):
 
     if world.retro[player] and world.keydropshuffle[player]:
         world.itempool += [ItemFactory('Small Key (Universal)', player)] * 32
+
+
+repeatable_shop_items = ('Single Arrow', 'Arrows (10)', 'Bombs (3)', 'Bombs (10)', 'Red Potion', 'Small Heart',
+                         'Blue Shield', 'Red Shield', 'Bee', 'Small Key (Universal)', 'Blue Potion', 'Green Potion')
+
+cap_replacements = ('Single Arrow', 'Arrows (10)', 'Bombs (3)', 'Bombs (10)')
+
+cap_blacklist = ('Green Potion', 'Red Potion', 'Blue Potion')
+
+shop_transfer = {'Red Potion': 'Rupees (100)', 'Bee': 'Rupees (5)', 'Blue Potion': 'Rupees (100)',
+                 'Green Potion': 'Rupees (50)',
+                 # money seems a bit too generous with these on
+                 # 'Blue Shield': 'Rupees (50)', 'Red Shield': 'Rupees (300)',
+                 }
 
 def get_pool_core(progressive, shuffle, difficulty, timer, goal, mode, swords, retro, door_shuffle):
     pool = []

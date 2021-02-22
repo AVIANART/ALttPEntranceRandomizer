@@ -5,7 +5,6 @@ import random
 
 
 def link_entrances(world, player):
-    from Regions import create_dynamic_shop_locations
     
     connect_two_way(world, 'Links House', 'Links House Exit', player) # unshuffled. For now
     connect_exit(world, 'Chris Houlihan Room Exit', 'Links House', player) # should always match link's house, except for plandos
@@ -1067,7 +1066,6 @@ def link_entrances(world, player):
 
     if world.retro[player]:
         set_up_take_anys(world, player)
-    create_dynamic_shop_locations(world, player)
 
     # check for swamp palace fix
     if world.get_entrance('Dam', player).connected_region.name != 'Dam' or world.get_entrance('Swamp Palace', player).connected_region.name != 'Swamp Portal':
@@ -1086,7 +1084,6 @@ def link_entrances(world, player):
         world.ganonstower_vanilla[player] = False
 
 def link_inverted_entrances(world, player):
-    from Regions import create_dynamic_shop_locations
     # Link's house shuffled freely, Houlihan set in mandatory_connections 
 
     Dungeon_Exits = Inverted_Dungeon_Exits_Base.copy()
@@ -1776,7 +1773,6 @@ def link_inverted_entrances(world, player):
 
     if world.retro[player]:
         set_up_take_anys(world, player)
-    create_dynamic_shop_locations(world, player)
 
     # check for swamp palace fix
     if world.get_entrance('Dam', player).connected_region.name != 'Dam' or world.get_entrance('Swamp Palace', player).connected_region.name != 'Swamp Lobby':

@@ -471,13 +471,14 @@ class World(object):
 
     def customize_shops(self, player):
         from Items import ItemFactory
-        from Regions import shop_to_location_table
+        from ItemList import repeatable_shop_items, cap_replacements, cap_blacklist, shop_transfer
+        from Regions import shop_to_location_table, retro_shops
 
         found_bomb_upgrade, found_arrow_upgrade = False, self.retro[player]
         possible_replacements = []
         shops_to_customize = shop_to_location_table.copy()
         if self.retro[player]:
-            shops_to_customize.update(self.retro_shops)
+            shops_to_customize.update(retro_shops)
         for shop_name, loc_list in shops_to_customize.items():
             shop = self.get_region(shop_name, player).shop
             shop.custom = True
@@ -486,8 +487,8 @@ class World(object):
                 location = self.get_location(loc, player)
                 item = location.item
                 max_repeat = 1
-                if shop_name not in self.retro_shops:
-                    if item.name in self.repeatable_shop_items and item.player == player:
+                if shop_name not in retro_shops:
+                    if item.name in repeatable_shop_items and item.player == player:
                         max_repeat = 0
                     if item.name in ['Bomb Upgrade (+5)', 'Arrow Upgrade (+5)'] and item.player == player:
                         if item.name == 'Bomb Upgrade (+5)':
@@ -495,7 +496,7 @@ class World(object):
                         if item.name == 'Arrow Upgrade (+5)':
                             found_arrow_upgrade = True
                         max_repeat = 7
-                if shop_name in self.retro_shops:
+                if shop_name in retro_shops:
                     price = 0
                 else:
                     price = 120 if shop_name == 'Potion Shop' and item.name == 'Red Potion' else item.price
@@ -503,7 +504,7 @@ class World(object):
                         price = 80
                 # randomize price
                 shop.add_inventory(idx, item.name, self.randomize_price(price), max_repeat, player=item.player)
-                if item.name in self.cap_replacements and shop_name not in self.retro_shops and item.player == player:
+                if item.name in cap_replacements and shop_name not in retro_shops and item.player == player:
                     possible_replacements.append((shop, idx, location, item))
             # randomize shopkeeper
             if shop_name != 'Capacity Upgrade':
@@ -537,7 +538,7 @@ class World(object):
         self.change_shop_items_to_rupees(player, shops_to_customize)
         self.todays_discounts(player)
 
-    def randomize_price(price):
+    def randomize_price(self, price):
         half_price = price // 2
         max_price = price - half_price
         if max_price % 5 == 0:
@@ -554,21 +555,26 @@ class World(object):
 
     def change_shop_items_to_rupees(self, player, shops):
         from Items import ItemFactory
+        from ItemList import cap_blacklist, shop_transfer
+        from Regions import shop_to_location_table
+
         locations = self.get_filled_locations(player)
         for location in locations:
-            if location.item.name in self.shop_transfer.keys() and location.parent_region.name not in shops:
-                new_item = ItemFactory(self.shop_transfer[location.item.name], location.item.player)
+            if location.item.name in shop_transfer.keys() and location.parent_region.name not in shops:
+                new_item = ItemFactory(shop_transfer[location.item.name], location.item.player)
                 location.item = new_item
-            if location.parent_region.name == 'Capacity Upgrade' and location.item.name in self.cap_blacklist:
+            if location.parent_region.name == 'Capacity Upgrade' and location.item.name in cap_blacklist:
                 new_item = ItemFactory('Rupees (300)', location.item.player)
                 location.item = new_item
                 shop = self.get_region('Capacity Upgrade', player).shop
-                slot = self.shop_to_location_table['Capacity Upgrade'].index(location.name)
+                slot = shop_to_location_table['Capacity Upgrade'].index(location.name)
                 shop.add_inventory(slot, new_item.name, self.randomize_price(new_item.price), 1, player=new_item.player)
 
     def todays_discounts(self, player):
+        from Regions import shop_to_location_table
+        
         locs = []
-        for shop, locations in self.shop_to_location_table.items():
+        for shop, locations in shop_to_location_table.items():
             for slot, loc in enumerate(locations):
                 locs.append((self.get_location(loc, player), shop, slot))
         discount_number = random.randint(4, 7)
@@ -632,16 +638,6 @@ class WorldAttributes(object):
 class WorldBuilder(object):
     def __init__(self):
         self.world = None
-        self.repeatable_shop_items = ('Single Arrow', 'Arrows (10)', 'Bombs (3)', 'Bombs (10)',
-                                      'Red Potion', 'Small Heart', 'Blue Shield', 'Red Shield',
-                                      'Bee', 'Small Key (Universal)', 'Blue Potion', 'Green Potion')
-        self.cap_replacements = ('Single Arrow', 'Arrows (10)', 'Bombs (3)', 'Bombs (10)')
-        self.cap_blacklist = ('Green Potion', 'Red Potion', 'Blue Potion')
-        self.shop_transfer = {'Red Potion': 'Rupees (100)', 'Bee': 'Rupees (5)', 'Blue Potion': 'Rupees (100)',
-                              'Green Potion': 'Rupees (50)',
-                              # money seems a bit too generous with these on
-                              # 'Blue Shield': 'Rupees (50)', 'Red Shield': 'Rupees (300)',
-                             }
 
     def build(self):
 
@@ -697,8 +693,8 @@ class WorldBuilder(object):
             place_world_items(self.world, player)
             generate_itempool(self.world, player)
             place_bosses(self.world, player)
-            self.set_up_shops(self.world, player)
-            self.create_dynamic_shop_locations(self.world, player)
+            self.set_up_shops(player)
+            self.create_dynamic_shop_locations(player)
 
         return self.world
 
@@ -760,6 +756,8 @@ class WorldBuilder(object):
     def set_fish(self, fish):
         self.fish = fish
 
+        return self
+
     def set_up_shops(self, player):
         from Items import ItemFactory
 
@@ -794,8 +792,6 @@ class WorldBuilder(object):
                     shop.add_inventory(2, 'Bombs (10)', 50)
                 rss.locked = True
             return self
-
-
 
     def create_dynamic_shop_locations(self, player):
         from Items import ItemFactory
