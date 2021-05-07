@@ -1346,9 +1346,7 @@ def link_inverted_entrances(world, player):
         # tavern back door cannot be shuffled yet
         connect_doors(world, ['Tavern North'], ['Tavern'], player)
 
-        caves.append(tuple(random.sample(['Hyrule Castle Exit (South)', 'Hyrule Castle Exit (West)', 'Hyrule Castle Exit (East)'],3)))
         lw_entrances.append('Hyrule Castle Entrance (South)')
-
 
         if not world.shuffle_ganon:
             connect_two_way(world, 'Inverted Ganons Tower', 'Inverted Ganons Tower Exit', player)
@@ -1363,11 +1361,11 @@ def link_inverted_entrances(world, player):
         aga_doors = [i for i in all_entrances_aga]
         random.shuffle(aga_doors)
         aga_door = aga_doors.pop()
-        
+
         if aga_door in hc_ledge_entrances:
             lw_entrances.remove(aga_door)
             hc_ledge_entrances.remove(aga_door)
-            
+
             random.shuffle(hc_ledge_entrances)
             hc_ledge_must_exit = hc_ledge_entrances.pop()
             lw_entrances.remove(hc_ledge_must_exit)
@@ -1380,7 +1378,7 @@ def link_inverted_entrances(world, player):
 
         connect_two_way(world, aga_door, 'Inverted Agahnims Tower Exit', player)
         caves.remove('Inverted Agahnims Tower Exit')
-        
+
         # place links house
         links_house_doors = [i for i in lw_entrances + dw_entrances + lw_must_exits if i not in Inverted_Dark_Sanctuary_Doors + Isolated_LH_Doors]
         links_house = random.choice(list(links_house_doors))
@@ -1397,7 +1395,7 @@ def link_inverted_entrances(world, player):
         sanc_door = random.choice(sanc_doors)
         dw_entrances.remove(sanc_door)
         connect_doors(world, [sanc_door], ['Inverted Dark Sanctuary'], player)
-        
+
         # place old man house
         # no dw must exits in inverted, but we randomize whether cave is in light or dark world
         if random.randint(0, 1) == 0:
@@ -1405,13 +1403,16 @@ def link_inverted_entrances(world, player):
             connect_mandatory_exits(world, lw_entrances, caves, lw_must_exits, player)
             try:
                 caves.remove(old_man_house[0])
-            except ValueError: 
+            except ValueError:
                 pass
-            else: #if the cave wasn't placed we get here
-                connect_caves(world, lw_entrances, [], old_man_house, player)                
+            else: # if the cave wasn't placed we get here
+                connect_caves(world, lw_entrances, [], old_man_house, player)
         else:
             connect_caves(world, dw_entrances, [], old_man_house, player)
             connect_mandatory_exits(world, lw_entrances, caves, lw_must_exits, player)
+
+        # put all HC exits in LW in inverted full shuffle
+        connect_caves(world, lw_entrances, [], [('Hyrule Castle Exit (West)', 'Hyrule Castle Exit (East)', 'Hyrule Castle Exit (South)')], player)
 
         # place old man, has limited options
         # exit has to come from specific set of doors, the entrance is free to move about
