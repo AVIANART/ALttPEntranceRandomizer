@@ -15,11 +15,13 @@ from Text import KingsReturn_texts, Sanctuary_texts, Kakariko_texts, Blacksmiths
 from Utils import output_path, local_path, int16_as_bytes, int32_as_bytes, snes_to_pc
 from Items import ItemFactory, item_table
 from InitialSram import InitialSram
-from EntranceShuffle import door_addresses
+from EntranceShuffle import door_addresses, outlet_ids, exit_ids, exit_room_ids
 
 
 JAP10HASH = '03a63945398191337e896e5771f77173'
-RANDOMIZERBASEHASH = '46f000b3d0e70c67b10407d419d65caf'
+RANDOMIZERBASEHASH = '2d07e2a2645843ce3cca2a2793c23c4e'
+
+OUTLET_TABLE = snes_to_pc(0x30EB00)
 
 
 class JsonRom(object):
@@ -489,48 +491,62 @@ def patch_rom(world, player, rom):
         rom.write_byte(0x155C9, random.choice([0x11, 0x16]))  # Randomize GT music too in keysanity mode
 
     # patch entrance/exits/holes
+    # CROSSKEYS
     for region in world.regions:
         for exit in region.exits:
             if exit.target is not None and exit.player == player:
                 if isinstance(exit.addresses, tuple):
-                    offset = exit.target
-                    room_id, ow_area, vram_loc, scroll_y, scroll_x, link_y, link_x, camera_y, camera_x, unknown_1, unknown_2, door_1, door_2 = exit.addresses
-                    #room id is deliberately not written
+                    if exit.name == "Links House Exit":
+                        continue
+                    elif exit.name == "Chris Houlihan Room Exit":
+                        continue
+                    #room_id, ow_area, vram_loc, scroll_y, scroll_x, link_y, link_x, camera_y, camera_x, unknown_1, unknown_2, door_1, door_2 = exit.addresses
+                    room_id = exit_room_ids[exit.name]
+                    target_ow_door = exit.target_exit
+                    offset = OUTLET_TABLE+room_id                    
 
-
-                    rom.write_byte(0x15B8C + offset, ow_area)
-                    rom.write_int16(0x15BDB + 2 * offset, vram_loc)
-                    rom.write_int16(0x15C79 + 2 * offset, scroll_y)
-                    rom.write_int16(0x15D17 + 2 * offset, scroll_x)
-
-                    # for positioning fixups we abuse the roomid as a way of identifying which exit data we are appling
-                    # Thanks to Zarby89 for originally finding these values
-                    # todo fix screen scrolling
-
-                    if world.shuffle not in ['insanity', 'insanity_legacy', 'madness_legacy'] and \
-                        exit.name in ['Eastern Palace Exit', 'Tower of Hera Exit', 'Thieves Town Exit', 'Skull Woods Final Section Exit', 'Ice Palace Exit', 'Misery Mire Exit',
-                                      'Palace of Darkness Exit', 'Swamp Palace Exit', 'Ganons Tower Exit', 'Desert Palace Exit (North)', 'Agahnims Tower Exit', 'Spiral Cave Exit (Top)',
-                                      'Superbunny Cave Exit (Bottom)', 'Turtle Rock Ledge Exit (East)']:
-                        # For exits that connot be reached from another, no need to apply offset fixes.
-                        rom.write_int16(0x15DB5 + 2 * offset, link_y) # same as final else
-                    elif room_id == 0x0059 and world.fix_skullwoods_exit:
-                        rom.write_int16(0x15DB5 + 2 * offset, 0x00F8)
-                    elif room_id == 0x004a and world.fix_palaceofdarkness_exit:
-                        rom.write_int16(0x15DB5 + 2 * offset, 0x0640)
-                    elif room_id == 0x00d6 and world.fix_trock_exit:
-                        rom.write_int16(0x15DB5 + 2 * offset, 0x0134)
-                    elif room_id == 0x000c and world.fix_gtower_exit: # fix ganons tower exit point
-                        rom.write_int16(0x15DB5 + 2 * offset, 0x00A4)
+                    if room_id >= 0x0100:
+                        rom.write_byte(offset, 0xFF)
                     else:
-                        rom.write_int16(0x15DB5 + 2 * offset, link_y)
+                        rom.write_byte(offset, outlet_ids[target_ow_door])
 
-                    rom.write_int16(0x15E53 + 2 * offset, link_x)
-                    rom.write_int16(0x15EF1 + 2 * offset, camera_y)
-                    rom.write_int16(0x15F8F + 2 * offset, camera_x)
-                    rom.write_byte(0x1602D + offset, unknown_1)
-                    rom.write_byte(0x1607C + offset, unknown_2)
-                    rom.write_int16(0x160CB + 2 * offset, door_1)
-                    rom.write_int16(0x16169 + 2 * offset, door_2)
+                    # offset = exit.target
+                    # #room id is deliberately not written
+
+
+                    # rom.write_byte(0x15B8C + offset, ow_area)
+                    # rom.write_int16(0x15BDB + 2 * offset, vram_loc)
+                    # rom.write_int16(0x15C79 + 2 * offset, scroll_y)
+                    # rom.write_int16(0x15D17 + 2 * offset, scroll_x)
+
+                    # # for positioning fixups we abuse the roomid as a way of identifying which exit data we are appling
+                    # # Thanks to Zarby89 for originally finding these values
+                    # # todo fix screen scrolling
+
+                    # if world.shuffle not in ['insanity', 'insanity_legacy', 'madness_legacy'] and \
+                    #     exit.name in ['Eastern Palace Exit', 'Tower of Hera Exit', 'Thieves Town Exit', 'Skull Woods Final Section Exit', 'Ice Palace Exit', 'Misery Mire Exit',
+                    #                   'Palace of Darkness Exit', 'Swamp Palace Exit', 'Ganons Tower Exit', 'Desert Palace Exit (North)', 'Agahnims Tower Exit', 'Spiral Cave Exit (Top)',
+                    #                   'Superbunny Cave Exit (Bottom)', 'Turtle Rock Ledge Exit (East)']:
+                    #     # For exits that connot be reached from another, no need to apply offset fixes.
+                    #     rom.write_int16(0x15DB5 + 2 * offset, link_y) # same as final else
+                    # elif room_id == 0x0059 and world.fix_skullwoods_exit:
+                    #     rom.write_int16(0x15DB5 + 2 * offset, 0x00F8)
+                    # elif room_id == 0x004a and world.fix_palaceofdarkness_exit:
+                    #     rom.write_int16(0x15DB5 + 2 * offset, 0x0640)
+                    # elif room_id == 0x00d6 and world.fix_trock_exit:
+                    #     rom.write_int16(0x15DB5 + 2 * offset, 0x0134)
+                    # elif room_id == 0x000c and world.fix_gtower_exit: # fix ganons tower exit point
+                    #     rom.write_int16(0x15DB5 + 2 * offset, 0x00A4)
+                    # else:
+                    #     rom.write_int16(0x15DB5 + 2 * offset, link_y)
+
+                    # rom.write_int16(0x15E53 + 2 * offset, link_x)
+                    # rom.write_int16(0x15EF1 + 2 * offset, camera_y)
+                    # rom.write_int16(0x15F8F + 2 * offset, camera_x)
+                    # rom.write_byte(0x1602D + offset, unknown_1)
+                    # rom.write_byte(0x1607C + offset, unknown_2)
+                    # rom.write_int16(0x160CB + 2 * offset, door_1)
+                    # rom.write_int16(0x16169 + 2 * offset, door_2)
                 elif isinstance(exit.addresses, list):
                     # is hole
                     for address in exit.addresses:
@@ -1146,6 +1162,13 @@ def apply_rom_settings(rom, beep, color, quickswap, fastmenu, disable_music, spr
     rom.write_byte(0x6FA2E, {'red': 0x24, 'blue': 0x2C, 'green': 0x3C, 'yellow': 0x28}[color])
     rom.write_byte(0x6FA30, {'red': 0x24, 'blue': 0x2C, 'green': 0x3C, 'yellow': 0x28}[color])
     rom.write_byte(0x65561, {'red': 0x05, 'blue': 0x0D, 'green': 0x19, 'yellow': 0x09}[color])
+
+    # custom stuff
+    rom.write_byte(snes_to_pc(0x30817F), 0x01)
+    rom.write_byte(0x183355, 0x01)
+    rom.write_byte(0x183379, 0x6C)
+    rom.write_byte(0x183359, 0x01)
+    rom.write_byte(0x183417, 0x01)
 
     # write link sprite if required
     if sprite is not None:

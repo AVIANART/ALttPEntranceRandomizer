@@ -707,6 +707,7 @@ class Entrance(object):
         self.vanilla = None
         self.access_rule = lambda state: True
         self.player = player
+        self.target_exit = None
 
     def can_reach(self, state):
         if self.parent_region.can_reach(state) and self.access_rule(state):
@@ -716,11 +717,12 @@ class Entrance(object):
 
         return False
 
-    def connect(self, region, addresses=None, target=None, vanilla=None):
+    def connect(self, region, addresses=None, target=None, vanilla=None, ow_door=None):
         self.connected_region = region
         self.target = target
         self.addresses = addresses
         self.vanilla = vanilla
+        self.target_exit = ow_door
         region.entrances.append(self)
 
     def __str__(self):
