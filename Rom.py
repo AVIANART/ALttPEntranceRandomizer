@@ -1163,13 +1163,6 @@ def apply_rom_settings(rom, beep, color, quickswap, fastmenu, disable_music, spr
     rom.write_byte(0x6FA30, {'red': 0x24, 'blue': 0x2C, 'green': 0x3C, 'yellow': 0x28}[color])
     rom.write_byte(0x65561, {'red': 0x05, 'blue': 0x0D, 'green': 0x19, 'yellow': 0x09}[color])
 
-    # custom stuff
-    rom.write_byte(snes_to_pc(0x30817F), 0x01)
-    rom.write_byte(0x183355, 0x01)
-    rom.write_byte(0x183379, 0x6C)
-    rom.write_byte(0x183359, 0x01)
-    rom.write_byte(0x183417, 0x01)
-
     # write link sprite if required
     if sprite is not None:
         write_sprite(rom, sprite)
