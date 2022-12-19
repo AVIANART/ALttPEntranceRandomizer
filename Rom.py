@@ -19,7 +19,7 @@ from EntranceShuffle import door_addresses, outlet_ids, exit_ids, exit_room_ids
 
 
 JAP10HASH = '03a63945398191337e896e5771f77173'
-RANDOMIZERBASEHASH = '2d07e2a2645843ce3cca2a2793c23c4e'
+RANDOMIZERBASEHASH = '46197415d477a47766bbd9e2d5956e1f'
 
 OUTLET_TABLE = snes_to_pc(0x30EB00)
 
